@@ -1,0 +1,284 @@
+
+1️⃣ MAX7219 Module #1 (Juu-Kushoto)
+
+```
+MAX7219 #1              Arduino UNO           Wire Color
+┌─────────────┐         ┌─────────────┐
+│ VCC         │────────►│ 5V          │  Nyekundu
+│ GND         │────────►│ GND         │  Nyeusi
+│ DIN         │────────►│ D12         │  Njano
+│ CS          │────────►│ D10         │  Kijani
+│ CLK         │────────►│ D11         │  Bluu
+│ DOUT        │────────►│ MAX#2 DIN   │  Zambarau
+└─────────────┘         └─────────────┘
+```
+
+---
+
+2️⃣ MAX7219 Module #2 (Juu-Kulia)
+
+```
+MAX7219 #2              Kutoka                Wire Color
+┌─────────────┐         ┌─────────────┐
+│ VCC         │────────►│ 5V (shared) │  Nyekundu
+│ GND         │────────►│ GND (shared)│  Nyeusi
+│ DIN         │────────►│ MAX#1 DOUT  │  Zambarau
+│ CS          │────────►│ D10 (shared)│  Kijani
+│ CLK         │────────►│ D11 (shared)│  Bluu
+│ DOUT        │────────►│ MAX#3 DIN   │  Machungwa
+└─────────────┘         └─────────────┘
+```
+
+---
+
+3️⃣ MAX7219 Module #3 (Chini-Kushoto)
+
+```
+MAX7219 #3              Kutoka                Wire Color
+┌─────────────┐         ┌─────────────┐
+│ VCC         │────────►│ 5V (shared) │  Nyekundu
+│ GND         │────────►│ GND (shared)│  Nyeusi
+│ DIN         │────────►│ MAX#2 DOUT  │  Machungwa
+│ CS          │────────►│ D10 (shared)│  Kijani
+│ CLK         │────────►│ D11 (shared)│  Bluu
+│ DOUT        │────────►│ MAX#4 DIN   │  Waridi
+└─────────────┘         └─────────────┘
+```
+
+---
+
+4️⃣ MAX7219 Module #4 (Chini-Kulia)
+
+```
+MAX7219 #4              Kutoka                Wire Color
+┌─────────────┐         ┌─────────────┐
+│ VCC         │────────►│ 5V (shared) │  Nyekundu
+│ GND         │────────►│ GND (shared)│  Nyeusi
+│ DIN         │────────►│ MAX#3 DOUT  │  Waridi
+│ CS          │────────►│ D10 (shared)│  Kijani
+│ CLK         │────────►│ D11 (shared)│  Bluu
+│ DOUT        │────────►│ (haipo)     │  —
+└─────────────┘         └─────────────┘
+```
+
+---
+
+5️⃣ OLED 0.96" I2C (SSD1306)
+
+```
+OLED SSD1306            Arduino UNO           Wire Color
+┌─────────────┐         ┌─────────────┐
+│ VCC         │────────►│ 5V          │  Nyekundu
+│ GND         │────────►│ GND         │  Nyeusi
+│ SDA         │────────►│ A4          │  Bluu
+│ SCL         │────────►│ A5          │  Njano
+└─────────────┘         └─────────────┘
+```
+
+---
+
+6️⃣ Joystick Module (XY + SW)
+
+```
+Joystick                Arduino UNO           Wire Color
+┌─────────────┐         ┌─────────────┐
+│ +5V (VCC)   │────────►│ 5V          │  Nyekundu
+│ GND         │────────►│ GND         │  Nyeusi
+│ VRx (X)     │────────►│ A0          │  Njano
+│ VRy (Y)     │────────►│ A1          │  Kijani
+│ SW (Button) │────────►│ D5          │  Bluu
+└─────────────┘         └─────────────┘
+      │
+      └── INPUT_PULLUP (ndani ya code) ──► Hakuna resistor ya nje
+```
+
+---
+
+7️⃣ Button OK (Select/Confirm)
+
+```
+Button OK               Arduino UNO           Wire Color
+┌─────────────┐         ┌─────────────┐
+│ Terminal 1  │────────►│ D2          │  Njano
+│ Terminal 2  │────────►│ GND         │  Nyeusi
+└─────────────┘         └─────────────┘
+      │
+      └── INPUT_PULLUP (ndani ya code) ──► Hakuna resistor ya nje
+```
+
+---
+
+8️⃣ Button LEFT (Menu Kushoto)
+
+```
+Button LEFT             Arduino UNO           Wire Color
+┌─────────────┐         ┌─────────────┐
+│ Terminal 1  │────────►│ D3          │  Njano
+│ Terminal 2  │────────►│ GND         │  Nyeusi
+└─────────────┘         └─────────────┘
+      │
+      └── INPUT_PULLUP (ndani ya code) ──► Hakuna resistor ya nje
+```
+
+---
+
+9️⃣ Button RIGHT (Menu Kulia)
+
+```
+Button RIGHT            Arduino UNO           Wire Color
+┌─────────────┐         ┌─────────────┐
+│ Terminal 1  │────────►│ D4          │  Njano
+│ Terminal 2  │────────►│ GND         │  Nyeusi
+└─────────────┘         └─────────────┘
+      │
+      └── INPUT_PULLUP (ndani ya code) ──► Hakuna resistor ya nje
+```
+
+---
+
+🔟 Power Supply (5V 2A ya Nje — Inapendekezwa)
+
+```
+5V 2A Adapter           Ugavi                 Wire Color
+┌─────────────┐         ┌─────────────┐
+│ +5V         │────────►│ MAX7219 VCC │  Nyekundu
+│             │         │ (zote 4)    │
+│             │────────►│ OLED VCC    │  Nyekundu
+│             │────────►│ Joystick VCC│  Nyekundu
+│             │────────►│ Arduino 5V  │  Nyekundu
+│             │         │             │
+│ GND         │────────►│ MAX7219 GND │  Nyeusi
+│             │         │ (zote 4)    │
+│             │────────►│ OLED GND    │  Nyeusi
+│             │────────►│ Joystick GND│  Nyeusi
+│             │────────►│ Buttons GND │  Nyeusi
+│             │────────►│ Arduino GND │  Nyeusi ⚠️ COMMON
+└─────────────┘         └─────────────┘
+```
+
+⚠️ MUHIMU: GND ya adapter LAZIMA iunganishwe na GND ya Arduino (common ground).
+
+---
+
+📊 Jedwali la Muhtasari wa Pins:
+
+```
+┌──────────────────┬──────────────┬─────────────────┬──────────────┐
+│ Kifaa            │ Pin (Kifaa)  │ Pin (Arduino)   │ Wire Color   │
+├──────────────────┼──────────────┼─────────────────┼──────────────┤
+│ MAX7219 #1       │ DIN          │ D12             │ Njano        │
+│ MAX7219 #1-4     │ CS           │ D10             │ Kijani       │
+│ MAX7219 #1-4     │ CLK          │ D11             │ Bluu         │
+│ MAX7219 #1       │ DOUT         │ MAX#2 DIN       │ Zambarau     │
+│ MAX7219 #2       │ DOUT         │ MAX#3 DIN       │ Machungwa    │
+│ MAX7219 #3       │ DOUT         │ MAX#4 DIN       │ Waridi       │
+│ MAX7219 #1-4     │ VCC          │ 5V              │ Nyekundu     │
+│ MAX7219 #1-4     │ GND          │ GND             │ Nyeusi       │
+├──────────────────┼──────────────┼─────────────────┼──────────────┤
+│ OLED SSD1306     │ SDA          │ A4              │ Bluu         │
+│ OLED SSD1306     │ SCL          │ A5              │ Njano        │
+│ OLED SSD1306     │ VCC          │ 5V              │ Nyekundu     │
+│ OLED SSD1306     │ GND          │ GND             │ Nyeusi       │
+├──────────────────┼──────────────┼─────────────────┼──────────────┤
+│ Joystick         │ VRx          │ A0              │ Njano        │
+│ Joystick         │ VRy          │ A1              │ Kijani       │
+│ Joystick         │ SW           │ D5              │ Bluu         │
+│ Joystick         │ +5V          │ 5V              │ Nyekundu     │
+│ Joystick         │ GND          │ GND             │ Nyeusi       │
+├──────────────────┼──────────────┼─────────────────┼──────────────┤
+│ Button OK        │ Terminal 1   │ D2              │ Njano        │
+│ Button OK        │ Terminal 2   │ GND             │ Nyeusi       │
+├──────────────────┼──────────────┼─────────────────┼──────────────┤
+│ Button LEFT      │ Terminal 1   │ D3              │ Njano        │
+│ Button LEFT      │ Terminal 2   │ GND             │ Nyeusi       │
+├──────────────────┼──────────────┼─────────────────┼──────────────┤
+│ Button RIGHT     │ Terminal 1   │ D4              │ Njano        │
+│ Button RIGHT     │ Terminal 2   │ GND             │ Nyeusi       │
+└──────────────────┴──────────────┴─────────────────┴──────────────┘
+```
+
+---
+
+🎨 Rangi za Wires (Color Coding System):
+
+```
+┌──────────────┬─────────────────────────────────────────┐
+│ Rangi        │ Matumizi                                │
+├──────────────┼─────────────────────────────────────────┤
+│ Nyekundu     │ VCC / 5V (Power)                        │
+│ Nyeusi       │ GND (Ground)                            │
+│ Njano        │ Data (DIN, SDA, VRx, button signal)     │
+│ Kijani       │ CS / VRy                                │
+│ Bluu         │ CLK / SCL / SW                          │
+│ Zambarau     │ DOUT → DIN (chain 1→2)                  │
+│ Machungwa    │ DOUT → DIN (chain 2→3)                  │
+│ Waridi       │ DOUT → DIN (chain 3→4)                  │
+└──────────────┴─────────────────────────────────────────┘
+```
+
+---
+
+🗺️ Block Diagram ya Jumla:
+
+```
+                          ┌─────────────────┐
+                          │   ARDUINO UNO   │
+                          └────────┬────────┘
+                                   │
+        ┌──────────────────────────┼──────────────────────────┐
+        │                          │                          │
+        ▼                          ▼                          ▼
+┌───────────────┐          ┌───────────────┐          ┌───────────────┐
+│  MAX7219 x4   │          │  OLED 0.96"   │          │  Joystick +   │
+│  (Daisy Chain)│          │  (I2C)        │          │  3 Buttons    │
+│               │          │               │          │               │
+│ D12 → DIN#1   │          │ A4 → SDA      │          │ A0 → VRx      │
+│ D10 → CS#1-4  │          │ A5 → SCL      │          │ A1 → VRy      │
+│ D11 → CLK#1-4 │          │ 5V → VCC      │          │ D5 → SW       │
+│ 5V  → VCC#1-4 │          │ GND → GND     │          │ D2 → OK       │
+│ GND → GND#1-4 │          │               │          │ D3 → LEFT     │
+│               │          │               │          │ D4 → RIGHT    │
+│ #1→#2→#3→#4   │          │               │          │               │
+└───────────────┘          └───────────────┘          └───────────────┘
+```
+
+---
+
+⚡ Power Distribution:
+
+```
+                    ┌─────────────────┐
+                    │  5V 2A Adapter  │
+                    └────────┬────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              │              │              │
+              ▼              ▼              ▼
+        ┌──────────┐   ┌──────────┐   ┌──────────┐
+        │ +5V Rail │   │ GND Rail │   │ Arduino  │
+        │          │   │          │   │  5V/GND  │
+        └────┬─────┘   └────┬─────┘   └────┬─────┘
+             │              │              │
+             ▼              ▼              ▼
+        MAX VCC x4      MAX GND x4      Arduino
+        OLED VCC        OLED GND
+        Joystick VCC    Joystick GND
+                        Buttons GND
+```
+
+⚠️ Kumbuka: Arduino GND LAZIMA iunganishwe na GND ya adapter.
+
+---
+
+✅ Checklist ya Haraka:
+
+☐ MAX7219: VCC zote → 5V, GND zote → GND
+☐ MAX7219: DIN chain: Arduino D12 → #1 → #2 → #3 → #4
+☐ MAX7219: CLK (D11) na CS (D10) zimeunganishwa pamoja kwa modules zote
+☐ OLED: SDA → A4, SCL → A5 (⚠️ kagua mara mbili!)
+☐ Joystick: VRx → A0, VRy → A1, SW → D5
+☐ Buttons: OK → D2, LEFT → D3, RIGHT → D4, GND zote
+☐ Power: 5V 2A adapter (⚠️ si USB pekee!)
+☐ GND common: Arduino + adapter + vifaa vyote
+
+---
