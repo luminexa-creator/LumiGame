@@ -1,0 +1,869 @@
+/* ============================================================
+   LUMIGAME v2.4 — COMPLETE SYSTEM CODE
+   Hardware: Arduino UNO + 4x MAX7219 Matrix (2x2 Grid) + OLED SSD1306
+   Pins: DIN=12, CLK=11, CS=10, OLED(A4/A5), Joy(A0/A1/D5), BTNS(D2/D3/D4)
+   ============================================================ */
+
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <LedControl.h>
+#include <EEPROM.h>
+
+// ============================================================
+// CONFIG & PINS
+// ============================================================
+#define PIN_DIN   12
+#define PIN_CLK   11
+#define PIN_CS    10
+#define NUM_MODULES 4
+
+#define OLED_WIDTH  128
+#define OLED_HEIGHT 64
+#define OLED_ADDR_A 0x3C
+#define OLED_ADDR_B 0x3D
+#define OLED_REFRESH_MS 100   
+
+#define BTN_OK     2
+#define BTN_LEFT   3
+#define BTN_RIGHT  4
+#define JOY_SW     5
+
+#define JOY_X      A0
+#define JOY_Y      A1
+
+#define DISP_W  16
+#define DISP_H  16
+
+enum State { STATE_BOOT, STATE_LANGUAGE, STATE_MENU, STATE_PLAYING, STATE_GAME_OVER };
+enum GameID { GAME_PONG, GAME_SNAKE, GAME_BREAKOUT, GAME_INVADERS, GAME_FLAPPY, GAME_COUNT };
+enum Lang { LANG_SW = 0, LANG_EN = 1 };
+
+// ============================================================
+// OBJECTS & GLOBAL VARIABLES
+// ============================================================
+Adafruit_SSD1306 oled(OLED_WIDTH, OLED_HEIGHT, &Wire, -1);
+LedControl lc = LedControl(PIN_DIN, PIN_CLK, PIN_CS, NUM_MODULES);
+
+Lang currentLang = LANG_SW;
+State currentState = STATE_BOOT;
+
+int selectedGame = 0;
+int langCursor = 0;
+int gameCursor = 0;
+
+int gameScore = 0;
+int gameLevel = 1;
+int gameLives = 3;
+bool gameFinished = false;
+
+bool oledReady = false;
+unsigned long lastOledRefresh = 0;
+bool oledDirty = true;
+
+int highScores[GAME_COUNT] = {0};
+
+// Module Configurations (Re-orient orientation if matrix is upside down)
+struct ModuleConfig {
+  bool mirrorX;
+  bool mirrorY;
+  bool swapXY;
+};
+
+ModuleConfig modCfg[NUM_MODULES] = {
+  {false, false, false},  // Module 1 — Juu-Kushoto
+  {false, false, false},  // Module 2 — Juu-Kulia
+  {false, false, false},  // Module 3 — Chini-Kushoto
+  {false, false, false}   // Module 4 — Chini-Kulia
+};
+
+// ============================================================
+// LANGUAGE STRINGS
+// ============================================================
+struct Texts {
+  const char* selectLang;
+  const char* kiswahili;
+  const char* english;
+  const char* selectGame;
+  const char* score;
+  const char* level;
+  const char* lives;
+  const char* gameOver;
+  const char* pressOK;
+  const char* highScore;
+  const char* gameNames[GAME_COUNT];
+};
+
+Texts T_SW = {
+  "CHAGUA LUGHA", "1. KISWAHILI", "2. ENGLISH",
+  "CHAGUA MCHEZO", "ALAMA", "NGAO", "MAISHA",
+  "MCHEZO UMEKWISHA", "BONYEZA OK", "ALAMA JUU",
+  {"PONG", "NYOKA", "BRICK", "INVADERS", "HELIKOPTA"}
+};
+
+Texts T_EN = {
+  "SELECT LANGUAGE", "1. KISWAHILI", "2. ENGLISH",
+  "SELECT GAME", "SCORE", "LEVEL", "LIVES",
+  "GAME OVER", "PRESS OK", "HIGH SCORE",
+  {"PONG", "SNAKE", "BREAKOUT", "INVADERS", "FLAPPY"}
+};
+
+inline Texts& T() { return (currentLang == LANG_SW) ? T_SW : T_EN; }
+
+// ============================================================
+// BUTTONS & JOYSTICK
+// ============================================================
+struct Button { uint8_t pin; bool lastState; unsigned long lastPress; };
+Button btnOK    = {BTN_OK,    HIGH, 0};
+Button btnLeft  = {BTN_LEFT,  HIGH, 0};
+Button btnRight = {BTN_RIGHT, HIGH, 0};
+
+bool buttonPressed(Button &b) {
+  bool reading = digitalRead(b.pin);
+  unsigned long now = millis();
+  if (reading == LOW && b.lastState == HIGH && (now - b.lastPress) > 180) {
+    b.lastState = reading;
+    b.lastPress = now;
+    return true;
+  }
+  if (reading == HIGH) b.lastState = HIGH;
+  return false;
+}
+
+bool joystickPressed() {
+  static bool lastState = HIGH;
+  static unsigned long lastPress = 0;
+  bool reading = digitalRead(JOY_SW);
+  unsigned long now = millis();
+  if (reading == LOW && lastState == HIGH && (now - lastPress) > 180) {
+    lastState = reading; lastPress = now;
+    return true;
+  }
+  if (reading == HIGH) lastState = HIGH;
+  return false;
+}
+
+int readJoystickX() {
+  long sum = 0;
+  for (int i = 0; i < 4; i++) { sum += analogRead(JOY_X); }
+  return sum / 4;
+}
+
+int readJoystickY() {
+  long sum = 0;
+  for (int i = 0; i < 4; i++) { sum += analogRead(JOY_Y); }
+  return sum / 4;
+}
+
+// ============================================================
+// MATRIX MAPPING
+// ============================================================
+void setPixel(int x, int y, bool on = true) {
+  if (x < 0 || x >= DISP_W || y < 0 || y >= DISP_H) return;
+
+  int module, localX, localY;
+
+  if (y < 8) {
+    module = (x < 8) ? 0 : 1;
+    localY = y;
+  } else {
+    module = (x < 8) ? 2 : 3;
+    localY = y - 8;
+  }
+  localX = (x < 8) ? x : x - 8;
+
+  ModuleConfig &cfg = modCfg[module];
+
+  if (cfg.swapXY) {
+    int tmp = localX; localX = localY; localY = tmp;
+  }
+  if (cfg.mirrorX) localX = 7 - localX;
+  if (cfg.mirrorY) localY = 7 - localY;
+
+  lc.setLed(module, localY, localX, on);
+}
+
+void clearMatrix() { 
+  for (int i = 0; i < NUM_MODULES; i++) lc.clearDisplay(i); 
+}
+
+// ============================================================
+// BOOT SCREEN: "LUMIGAME" (3 SECONDS)
+// ============================================================
+const uint8_t font5x3_L[] PROGMEM = {0x1F, 0x10, 0x10};
+const uint8_t font5x3_U[] PROGMEM = {0x1F, 0x01, 0x1F};
+const uint8_t font5x3_M[] PROGMEM = {0x1F, 0x08, 0x1F};
+const uint8_t font5x3_I[] PROGMEM = {0x1F, 0x00, 0x00};
+
+void drawChar3x5(int x, int y, const uint8_t* font) {
+  for (int col = 0; col < 3; col++) {
+    uint8_t line = pgm_read_byte(font + col);
+    for (int row = 0; row < 5; row++) {
+      if (line & (1 << row)) setPixel(x + col, y + row);
+    }
+  }
+}
+
+void showBootAnimation() {
+  if (oledReady) {
+    oled.clearDisplay();
+    oled.setTextSize(2);
+    oled.setTextColor(SSD1306_WHITE);
+    oled.setCursor(16, 20);
+    oled.println(F("LUMIGAME"));
+    oled.setTextSize(1);
+    oled.setCursor(28, 45);
+    oled.println(F("SYSTEM READY"));
+    oled.display();
+  }
+
+  unsigned long start = millis();
+  while (millis() - start < 3000) {
+    clearMatrix();
+    drawChar3x5(0,  1, font5x3_L);
+    drawChar3x5(4,  1, font5x3_U);
+    drawChar3x5(8,  1, font5x3_M);
+    drawChar3x5(12, 1, font5x3_I);
+
+    int t = (millis() / 150) % 16;
+    for (int i = 0; i < DISP_W; i++) {
+      if ((i + t) % 4 == 0) {
+        setPixel(i, 8);
+        setPixel(15 - i, 15);
+      }
+    }
+    delay(50);
+  }
+  clearMatrix();
+}
+
+// ============================================================
+// HARDWARE INIT
+// ============================================================
+void hardwareInit() {
+  Wire.begin();
+
+  if (oled.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR_A)) {
+    oledReady = true;
+  } else if (oled.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR_B)) {
+    oledReady = true;
+  }
+
+  for (int i = 0; i < NUM_MODULES; i++) {
+    lc.shutdown(i, false);
+    lc.setIntensity(i, 4);
+    lc.clearDisplay(i);
+  }
+
+  pinMode(BTN_OK, INPUT_PULLUP);
+  pinMode(BTN_LEFT, INPUT_PULLUP);
+  pinMode(BTN_RIGHT, INPUT_PULLUP);
+  pinMode(JOY_SW, INPUT_PULLUP);
+
+  showBootAnimation();
+}
+
+// ============================================================
+// OLED UI
+// ============================================================
+void markOledDirty() { oledDirty = true; }
+
+bool shouldRefreshOled() {
+  unsigned long now = millis();
+  if (oledDirty || (now - lastOledRefresh) > OLED_REFRESH_MS) {
+    lastOledRefresh = now;
+    oledDirty = false;
+    return true;
+  }
+  return false;
+}
+
+void drawLanguageScreen() {
+  if (!oledReady || !shouldRefreshOled()) return;
+  oled.clearDisplay();
+  oled.setTextSize(1);
+  oled.setCursor(0, 0);
+  oled.println(T().selectLang);
+  oled.drawLine(0, 10, 128, 10, SSD1306_WHITE);
+  oled.setCursor(10, 24);
+  oled.print(langCursor == 0 ? "> " : "  ");
+  oled.println(T().kiswahili);
+  oled.setCursor(10, 42);
+  oled.print(langCursor == 1 ? "> " : "  ");
+  oled.println(T().english);
+  oled.display();
+}
+
+void drawMenuScreen() {
+  if (!oledReady || !shouldRefreshOled()) return;
+  oled.clearDisplay();
+  oled.setTextSize(1);
+  oled.setCursor(0, 0);
+  oled.println(T().selectGame);
+  oled.drawLine(0, 10, 128, 10, SSD1306_WHITE);
+  for (int i = 0; i < GAME_COUNT; i++) {
+    oled.setCursor(10, 18 + i * 9);
+    oled.print(i == gameCursor ? "> " : "  ");
+    oled.print(i + 1); oled.print(". ");
+    oled.println(T().gameNames[i]);
+  }
+  oled.display();
+}
+
+void drawHUD() {
+  if (!oledReady || !shouldRefreshOled()) return;
+  oled.clearDisplay();
+  oled.setTextSize(1);
+  oled.setCursor(0, 0);
+  oled.println(T().gameNames[gameCursor]);
+  oled.drawLine(0, 10, 128, 10, SSD1306_WHITE);
+  oled.setCursor(0, 20);
+  oled.print(T().score); oled.print(": "); oled.println(gameScore);
+  oled.setCursor(0, 34);
+  oled.print(T().level); oled.print(": "); oled.println(gameLevel);
+  oled.setCursor(0, 48);
+  oled.print(T().lives); oled.print(": "); oled.println(gameLives);
+  oled.display();
+}
+
+void drawGameOver(int highScore) {
+  if (!oledReady || !shouldRefreshOled()) return;
+  oled.clearDisplay();
+  oled.setTextSize(1);
+  oled.setCursor(20, 5);
+  oled.println(T().gameOver);
+  oled.drawLine(0, 15, 128, 15, SSD1306_WHITE);
+  oled.setCursor(10, 25);
+  oled.print(T().score); oled.print(": "); oled.println(gameScore);
+  oled.setCursor(10, 40);
+  oled.print(T().highScore); oled.print(": "); oled.println(highScore);
+  oled.setCursor(20, 55);
+  oled.println(T().pressOK);
+  oled.display();
+}
+
+// ============================================================
+// GAMES (PONG, SNAKE, BREAKOUT, INVADERS, FLAPPY)
+// ============================================================
+#define PONG_PADDLE_H 4
+#define PONG_AI_H     3
+
+int  pongPlayerY, pongAIY;
+int  pongBallX, pongBallY;
+int  pongDX, pongDY;
+unsigned long pongLastMove;
+
+int pongSpeedDelay() {
+  return constrain(180 - (gameLevel - 1) * 20, 60, 180);
+}
+
+void pongResetBall(int dir) {
+  pongBallX = 8; pongBallY = 8;
+  pongDX = dir;
+  pongDY = (random(0, 2) == 0) ? 1 : -1;
+}
+
+void pongInit() {
+  pongPlayerY = 6; pongAIY = 6;
+  pongResetBall(-1);
+  pongLastMove = millis();
+  clearMatrix();
+}
+
+void pongLoop() {
+  int joy = readJoystickX();
+  int target = map(joy, 0, 1023, 0, DISP_H - PONG_PADDLE_H);
+  pongPlayerY = constrain(target, 0, DISP_H - PONG_PADDLE_H);
+
+  if (millis() - pongLastMove > (unsigned long)pongSpeedDelay()) {
+    pongLastMove = millis();
+
+    if (pongAIY + PONG_AI_H / 2 < pongBallY && pongAIY < DISP_H - PONG_AI_H) pongAIY++;
+    else if (pongAIY + PONG_AI_H / 2 > pongBallY && pongAIY > 0) pongAIY--;
+
+    pongBallX += pongDX;
+    pongBallY += pongDY;
+
+    if (pongBallY <= 0) { pongBallY = 0; pongDY = 1; }
+    if (pongBallY >= DISP_H - 1) { pongBallY = DISP_H - 1; pongDY = -1; }
+
+    if (pongBallX <= 1) {
+      if (pongBallY >= pongPlayerY && pongBallY < pongPlayerY + PONG_PADDLE_H) {
+        pongBallX = 1; pongDX = 1; gameScore += 10;
+      } else {
+        gameLives--;
+        if (gameLives <= 0) { gameFinished = true; return; }
+        pongResetBall(1);
+      }
+    }
+
+    if (pongBallX >= DISP_W - 2) {
+      if (pongBallY >= pongAIY && pongBallY < pongAIY + PONG_AI_H) {
+        pongBallX = DISP_W - 2; pongDX = -1;
+      } else {
+        gameScore += 20;
+        pongResetBall(-1);
+      }
+    }
+
+    gameLevel = 1 + gameScore / 100;
+  }
+
+  clearMatrix();
+  for (int i = 0; i < PONG_PADDLE_H; i++) setPixel(0, pongPlayerY + i);
+  for (int i = 0; i < PONG_AI_H; i++)     setPixel(DISP_W - 1, pongAIY + i);
+  setPixel(pongBallX, pongBallY);
+  for (int y = 0; y < DISP_H; y += 2)     setPixel(7, y);
+}
+
+// SNAKE
+#define SNAKE_MAX 64
+struct Point { int8_t x, y; };
+Point snakeBody[SNAKE_MAX];
+int snakeLength;
+int snakeDX, snakeDY;
+Point snakeFood;
+unsigned long snakeLastMove;
+
+void snakeSpawnFood() {
+  bool ok = false;
+  int tries = 0;
+  while (!ok && tries < 50) {
+    snakeFood.x = random(0, DISP_W);
+    snakeFood.y = random(0, DISP_H);
+    ok = true;
+    for (int i = 0; i < snakeLength; i++) {
+      if (snakeBody[i].x == snakeFood.x && snakeBody[i].y == snakeFood.y) {
+        ok = false; break;
+      }
+    }
+    tries++;
+  }
+}
+
+void snakeInit() {
+  snakeLength = 3;
+  snakeBody[0] = {8, 8};
+  snakeBody[1] = {7, 8};
+  snakeBody[2] = {6, 8};
+  snakeDX = 1; snakeDY = 0;
+  snakeLastMove = millis();
+  snakeSpawnFood();
+  clearMatrix();
+}
+
+void snakeLoop() {
+  int jx = readJoystickX();
+  int jy = readJoystickY();
+
+  if (jx < 300 && snakeDX == 0) { snakeDX = -1; snakeDY = 0; }
+  else if (jx > 700 && snakeDX == 0) { snakeDX = 1; snakeDY = 0; }
+  else if (jy < 300 && snakeDY == 0) { snakeDX = 0; snakeDY = -1; }
+  else if (jy > 700 && snakeDY == 0) { snakeDX = 0; snakeDY = 1; }
+
+  int speed = constrain(220 - (gameLevel - 1) * 20, 80, 220);
+
+  if (millis() - snakeLastMove > (unsigned long)speed) {
+    snakeLastMove = millis();
+
+    Point newHead = { (int8_t)(snakeBody[0].x + snakeDX),
+                      (int8_t)(snakeBody[0].y + snakeDY) };
+
+    if (newHead.x < 0 || newHead.x >= DISP_W ||
+        newHead.y < 0 || newHead.y >= DISP_H) {
+      gameFinished = true; return;
+    }
+
+    for (int i = 0; i < snakeLength - 1; i++) {
+      if (snakeBody[i].x == newHead.x && snakeBody[i].y == newHead.y) {
+        gameFinished = true; return;
+      }
+    }
+
+    for (int i = snakeLength - 1; i > 0; i--) snakeBody[i] = snakeBody[i - 1];
+    snakeBody[0] = newHead;
+
+    if (newHead.x == snakeFood.x && newHead.y == snakeFood.y) {
+      if (snakeLength < SNAKE_MAX) {
+        snakeLength++;
+        snakeBody[snakeLength - 1] = snakeBody[snakeLength - 2];
+      }
+      gameScore += 10;
+      gameLevel = 1 + gameScore / 50;
+      snakeSpawnFood();
+    }
+  }
+
+  clearMatrix();
+  setPixel(snakeFood.x, snakeFood.y);
+  for (int i = 0; i < snakeLength; i++) {
+    setPixel(snakeBody[i].x, snakeBody[i].y);
+  }
+}
+
+// BREAKOUT
+#define BRK_ROWS 3
+#define BRK_COLS 16
+bool  brkBricks[BRK_ROWS][BRK_COLS];
+int   brkPaddleX, brkPaddleW;
+int   brkBallX, brkBallY;
+int   brkDX, brkDY;
+unsigned long brkLastMove;
+
+void brkResetBall() {
+  brkBallX = 8; brkBallY = 12;
+  brkDX = (random(0, 2) == 0) ? 1 : -1;
+  brkDY = -1;
+}
+
+void breakoutInit() {
+  for (int r = 0; r < BRK_ROWS; r++)
+    for (int c = 0; c < BRK_COLS; c++)
+      brkBricks[r][c] = true;
+
+  brkPaddleW = 4;
+  brkPaddleX = 6;
+  brkResetBall();
+  brkLastMove = millis();
+  clearMatrix();
+}
+
+void breakoutLoop() {
+  int joy = readJoystickX();
+  int target = map(joy, 0, 1023, 0, DISP_W - brkPaddleW);
+  brkPaddleX = constrain(target, 0, DISP_W - brkPaddleW);
+
+  int speed = constrain(160 - (gameLevel - 1) * 15, 60, 160);
+
+  if (millis() - brkLastMove > (unsigned long)speed) {
+    brkLastMove = millis();
+
+    brkBallX += brkDX;
+    brkBallY += brkDY;
+
+    if (brkBallX <= 0) { brkBallX = 0; brkDX = 1; }
+    if (brkBallX >= DISP_W - 1) { brkBallX = DISP_W - 1; brkDX = -1; }
+    if (brkBallY <= 0) { brkBallY = 0; brkDY = 1; }
+
+    if (brkBallY >= DISP_H) {
+      gameLives--;
+      if (gameLives <= 0) { gameFinished = true; return; }
+      brkResetBall();
+    }
+
+    if (brkBallY == 14 && brkBallX >= brkPaddleX && brkBallX < brkPaddleX + brkPaddleW) {
+      brkBallY = 13; brkDY = -1;
+    }
+
+    if (brkBallY >= 0 && brkBallY < BRK_ROWS && brkBallX >= 0 && brkBallX < BRK_COLS) {
+      if (brkBricks[brkBallY][brkBallX]) {
+        brkBricks[brkBallY][brkBallX] = false;
+        brkDY = -brkDY;
+        gameScore += 5;
+        gameLevel = 1 + gameScore / 50;
+      }
+    }
+
+    bool anyLeft = false;
+    for (int r = 0; r < BRK_ROWS; r++)
+      for (int c = 0; c < BRK_COLS; c++)
+        if (brkBricks[r][c]) anyLeft = true;
+
+    if (!anyLeft) {
+      gameScore += 50;
+      breakoutInit();
+    }
+  }
+
+  clearMatrix();
+  for (int r = 0; r < BRK_ROWS; r++)
+    for (int c = 0; c < BRK_COLS; c++)
+      if (brkBricks[r][c]) setPixel(c, r);
+
+  for (int i = 0; i < brkPaddleW; i++) setPixel(brkPaddleX + i, 14);
+  setPixel(brkBallX, brkBallY);
+}
+
+// INVADERS
+#define INV_ROWS 3
+#define INV_COLS 5
+bool  invAliens[INV_ROWS][INV_COLS];
+int   invOffsetX, invOffsetY;
+int   invDir;
+int   invPlayerX;
+int   invBulletX, invBulletY;
+bool  invBulletActive;
+unsigned long invLastMove, invLastBullet;
+
+inline int alienVisualX(int col) {
+  return invOffsetX + col * 3;
+}
+
+bool alienHitTest(int bx, int by, int &outRow, int &outCol) {
+  for (int r = 0; r < INV_ROWS; r++) {
+    int ay = 1 + invOffsetY + r;
+    if (by != ay) continue;
+    for (int c = 0; c < INV_COLS; c++) {
+      int ax = alienVisualX(c);
+      if (bx >= ax && bx <= ax + 1) {
+        outRow = r; outCol = c;
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+void invadersInit() {
+  for (int r = 0; r < INV_ROWS; r++)
+    for (int c = 0; c < INV_COLS; c++)
+      invAliens[r][c] = true;
+
+  invOffsetX = 0; invOffsetY = 0; invDir = 1;
+  invPlayerX = 7;
+  invBulletActive = false;
+  invLastMove = millis();
+  invLastBullet = millis();
+  clearMatrix();
+}
+
+void invadersLoop() {
+  int joy = readJoystickX();
+  invPlayerX = constrain(map(joy, 0, 1023, 0, DISP_W - 1), 0, DISP_W - 1);
+
+  if ((joystickPressed() || buttonPressed(btnOK)) && !invBulletActive) {
+    invBulletX = invPlayerX;
+    invBulletY = 14;
+    invBulletActive = true;
+    invLastBullet = millis();
+  }
+
+  if (invBulletActive && millis() - invLastBullet > 60) {
+    invLastBullet = millis();
+    invBulletY--;
+    if (invBulletY < 0) {
+      invBulletActive = false;
+    } else {
+      int hitRow, hitCol;
+      if (alienHitTest(invBulletX, invBulletY, hitRow, hitCol)) {
+        if (invAliens[hitRow][hitCol]) {
+          invAliens[hitRow][hitCol] = false;
+          invBulletActive = false;
+          gameScore += 15;
+          gameLevel = 1 + gameScore / 100;
+        }
+      }
+    }
+  }
+
+  int speed = constrain(500 - (gameLevel - 1) * 40, 150, 500);
+  if (millis() - invLastMove > (unsigned long)speed) {
+    invLastMove = millis();
+
+    invOffsetX += invDir;
+    int maxOffset = DISP_W - (INV_COLS * 3 - 1);
+    if (invOffsetX <= 0) { invOffsetX = 0; invDir = 1; invOffsetY++; }
+    if (invOffsetX >= maxOffset) { invOffsetX = maxOffset; invDir = -1; invOffsetY++; }
+
+    if (invOffsetY >= DISP_H - 3) { gameFinished = true; return; }
+  }
+
+  bool anyAlive = false;
+  for (int r = 0; r < INV_ROWS; r++)
+    for (int c = 0; c < INV_COLS; c++)
+      if (invAliens[r][c]) anyAlive = true;
+
+  if (!anyAlive) {
+    gameScore += 50;
+    invadersInit();
+    return;
+  }
+
+  clearMatrix();
+  for (int r = 0; r < INV_ROWS; r++) {
+    int y = 1 + invOffsetY + r;
+    for (int c = 0; c < INV_COLS; c++) {
+      if (invAliens[r][c]) {
+        int x = alienVisualX(c);
+        setPixel(x, y);
+        if (x + 1 < DISP_W) setPixel(x + 1, y);
+      }
+    }
+  }
+  if (invBulletActive) setPixel(invBulletX, invBulletY);
+  setPixel(invPlayerX, 15);
+}
+
+// FLAPPY
+int   flapY;
+int   flapVY;
+int   flapPipeX;
+int   flapGapY;
+int   flapGapH;
+unsigned long flapLastMove;
+unsigned long flapPipeMove;
+
+void flapResetPipe() {
+  flapPipeX = DISP_W - 1;
+  flapGapH = 5;
+  flapGapY = random(1, DISP_H - flapGapH - 1);
+}
+
+void flappyInit() {
+  flapY = 7; flapVY = 0;
+  flapResetPipe();
+  flapLastMove = millis();
+  flapPipeMove = millis();
+  clearMatrix();
+}
+
+void flappyLoop() {
+  if (buttonPressed(btnOK) || joystickPressed() || buttonPressed(btnLeft) || buttonPressed(btnRight)) {
+    flapVY = -2;
+  }
+
+  if (millis() - flapLastMove > 100) {
+    flapLastMove = millis();
+    flapVY++;
+    flapVY = constrain(flapVY, -2, 2);
+    flapY += flapVY;
+
+    if (flapY < 0) { flapY = 0; flapVY = 0; }
+    if (flapY >= DISP_H) { gameFinished = true; return; }
+  }
+
+  int pipeSpeed = constrain(220 - (gameLevel - 1) * 20, 100, 220);
+  if (millis() - flapPipeMove > (unsigned long)pipeSpeed) {
+    flapPipeMove = millis();
+    flapPipeX--;
+
+    if (flapPipeX < 0) {
+      flapResetPipe();
+      gameScore += 10;
+      gameLevel = 1 + gameScore / 50;
+    }
+
+    if (flapPipeX >= 0 && flapPipeX < DISP_W) {
+      if (flapPipeX == 2 || flapPipeX == 3) {
+        if (flapY < flapGapY || flapY >= flapGapY + flapGapH) {
+          gameFinished = true; return;
+        }
+      }
+    }
+  }
+
+  clearMatrix();
+  if (flapPipeX >= 0 && flapPipeX < DISP_W) {
+    for (int y = 0; y < DISP_H; y++) {
+      if (y < flapGapY || y >= flapGapY + flapGapH) {
+        setPixel(flapPipeX, y);
+      }
+    }
+  }
+  setPixel(2, flapY);
+  setPixel(3, flapY);
+}
+
+// ============================================================
+// REGISTRATION & SYSTEM LOOPS
+// ============================================================
+typedef void (*GameFunc)();
+struct GameEntry { GameFunc init; GameFunc loop; };
+GameEntry games[GAME_COUNT];
+
+void registerGames() {
+  games[GAME_PONG]     = {pongInit,     pongLoop};
+  games[GAME_SNAKE]    = {snakeInit,    snakeLoop};
+  games[GAME_BREAKOUT] = {breakoutInit, breakoutLoop};
+  games[GAME_INVADERS] = {invadersInit, invadersLoop};
+  games[GAME_FLAPPY]   = {flappyInit,   flappyLoop};
+}
+
+void loadHighScores() {
+  for (int i = 0; i < GAME_COUNT; i++) {
+    highScores[i] = (EEPROM.read(i * 2) << 8) | EEPROM.read(i * 2 + 1);
+    if (highScores[i] == 0xFFFF || highScores[i] > 30000) highScores[i] = 0;
+  }
+}
+
+void saveHighScore(int game, int score) {
+  if (score > highScores[game]) {
+    highScores[game] = score;
+    EEPROM.update(game * 2, score >> 8);
+    EEPROM.update(game * 2 + 1, score & 0xFF);
+  }
+}
+
+void setup() {
+  Serial.begin(9600);
+  randomSeed(analogRead(A5));
+  hardwareInit();
+  loadHighScores();
+  registerGames();
+  
+  currentState = STATE_LANGUAGE;
+  markOledDirty();
+}
+
+void loop() {
+  switch (currentState) {
+
+    case STATE_LANGUAGE: {
+      if (buttonPressed(btnLeft) || buttonPressed(btnRight)) {
+        langCursor = 1 - langCursor;
+        markOledDirty();
+      }
+      if (buttonPressed(btnOK) || joystickPressed()) {
+        currentLang = (langCursor == 0) ? LANG_SW : LANG_EN;
+        markOledDirty();
+        currentState = STATE_MENU;
+        return;
+      }
+      drawLanguageScreen();
+      break;
+    }
+
+    case STATE_MENU: {
+      if (buttonPressed(btnRight)) {
+        gameCursor = (gameCursor + 1) % GAME_COUNT;
+        markOledDirty();
+      }
+      if (buttonPressed(btnLeft)) {
+        gameCursor = (gameCursor - 1 + GAME_COUNT) % GAME_COUNT;
+        markOledDirty();
+      }
+      if (buttonPressed(btnOK) || joystickPressed()) {
+        selectedGame = gameCursor;
+        clearMatrix();
+        gameScore = 0; gameLevel = 1; gameLives = 3; gameFinished = false;
+        if (games[selectedGame].init) games[selectedGame].init();
+        markOledDirty();
+        currentState = STATE_PLAYING;
+        return;
+      }
+      drawMenuScreen();
+      break;
+    }
+
+    case STATE_PLAYING: {
+      if (games[selectedGame].loop) games[selectedGame].loop();
+      drawHUD();
+      if (gameFinished) {
+        saveHighScore(selectedGame, gameScore);
+        markOledDirty();
+        currentState = STATE_GAME_OVER;
+      }
+      break;
+    }
+
+    case STATE_GAME_OVER: {
+      drawGameOver(highScores[selectedGame]);
+      if (buttonPressed(btnOK) || joystickPressed()) {
+        clearMatrix();
+        markOledDirty();
+        currentState = STATE_MENU;
+      }
+      break;
+    }
+  }
+}
