@@ -1,0 +1,41 @@
+## 🧰 Hardware & Components
+
+### 1. Main Electronics
+
+| Component | Quantity | Purpose |
+|---|---:|---|
+| Arduino UNO | 1× | Main controller |
+| MAX7219 8×8 Dot Matrix Module | 4× | 2×2 LED matrix game display |
+| OLED Display 0.96" (SSD1306, I²C) | 1× | Menu, scores, and status information |
+| Joystick Module (XY + SW) | 1× | Game control |
+| Tactile Push Button | 3× | OK/Select, LEFT, and RIGHT controls |
+
+### 2. Power Supply
+
+| Component | Quantity | Purpose |
+|---|---:|---|
+| 5V 2A DC Adapter | 1× | Main external power supply |
+| DC Barrel Jack Connector / Breadboard Power Module | 1× | Connects the external power adapter to the system |
+
+### 3. Wiring & Interconnection
+
+| Component | Quantity | Purpose |
+|---|---:|---|
+| Male-to-Male Jumper Wires | As required | Breadboard connections |
+| Male-to-Female Jumper Wires | As required | Module-to-board connections |
+| Female-to-Female Jumper Wires | As required | Module interconnections |
+| Breadboard | 1× | Prototyping and temporary wiring |
+| PCB Stripboard / Perfboard | Optional | Permanent installation |
+
+### 4. Wire Color Convention
+
+| Color | Signal |
+|---|---|
+| 🔴 Red | VCC / 5V |
+| ⚫ Black | GND / Common Ground |
+| 🟡 Yellow | Data signals — DIN, SDA, VRx, Button signals |
+| 🟢 Green | CS / VRy |
+| 🔵 Blue | CLK / SCL / SW |
+| 🟣 Purple / 🟠 Orange / 🌸 Pink | MAX7219 Daisy Chain — DOUT → DIN |
+
+> **Note:** Wire colors are used as a visual convention to make the wiring easier to understand and troubleshoot. The actual electrical function depends on the connected pin, not the wire color.
