@@ -205,7 +205,7 @@ Install
 
 1. Clone the Repository
 
-git clone https://github.com/your-username/LUMIGAME.git
+git clone https://github.com/luminexa-creator/LUMIGAME.git
 
 Then enter the project directory:
 
